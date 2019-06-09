@@ -10,6 +10,8 @@ import qrcode
 from django.http import HttpResponseRedirect
 import datetime
 import uuid
+import urllib.parse
+from xml.sax.saxutils import unescape
 
 DB = 'plot_data.sqlite3'
 
@@ -69,6 +71,53 @@ def data_input(request):
     return render(request, 'app/data_input.html', context)
 
 
+def trace_input(request):
+    """
+    """
+
+    if request.method == 'GET':
+        user_id = request.GET['user_id']
+        line = request.GET['line']
+        kote = request.GET['kote']
+
+        context = {'user_id': user_id, 'line': line, 'kote': kote}
+
+        return render(request, 'app/trace_input.html', context)
+
+
+def trace_list(request):
+    """
+    """
+
+    if request.method == 'GET':
+        user_id = request.GET['user_id']
+        line = request.GET['line']
+
+        conn = sqlite3.connect(DB)
+        cur = conn.cursor()
+        cmd = "select *  from trace_data where user_id=? and line=? order by id"
+
+        # print('---------')
+        # print(cmd)
+        # print('---------')
+        cur.execute(cmd, [user_id, line])
+        lst = cur.fetchall()
+
+        # print(lst)
+
+        # for row in lst:
+        #     print(row)
+        #     data_x.append(row[3])
+        #     data_y.append(row[4])
+
+        cur.close()
+        conn.close()
+
+        context = {'data': lst}
+
+        return render(request, 'app/trace_list.html', context)
+
+
 @csrf_exempt
 def api_01(request):
     """
@@ -79,7 +128,7 @@ def api_01(request):
     # print('メソッド={}'.format(method))
 
     if request.method == 'GET':
-        keyword1 = request.GET['keyword1']
+        keyword1 = request.GET['user_id']
         dt = request.GET['date']
         dictData = {}
         dictData['データ'] = '送信されたキーワードは「{}」です'.format(keyword1)
@@ -161,3 +210,86 @@ def qr_code(request):
     context = {'img_file': img_file}
 
     return render(request, 'app/qr_code.html', context)
+
+
+def qr_code2(request):
+    """
+    """
+
+    if 'url' in request.GET:
+        url = request.GET['url']
+    else:
+        url = None
+
+    print('url={}'.format(url))
+
+    if url != None:
+        url2 = urllib.parse.unquote(url)
+        print('url2={}'.format(url2))
+
+        url3 = unescape(url2)
+        print('url3={}'.format(url3))
+
+        img = qrcode.make(url3)
+    else:
+        img = qrcode.make('http://www.yahoo.co.jp')
+
+    u4 = str(uuid.uuid4())
+
+    # today = datetime.datetime.now()  # 現在の日時を取得
+    # img_file = today.strftime("%Y%m%d_%H%M%S")+'.png'  # datetimeのフォーマット
+    img_file = u4+'.png'  # datetimeのフォーマット
+
+    img.save('app/static/app/img/' + img_file)
+
+    context = {'img_file': img_file, 'url': url3}
+
+    return render(request, 'app/qr_code.html', context)
+
+
+@csrf_exempt
+def api_02(request):
+    """
+    JSON返すAPI
+    """
+
+    print('postに来ました')
+
+    if request.method == 'POST':
+        user_id = request.POST['user_id']
+        line = request.POST['line']
+        kote = request.POST['kote']
+        status = request.POST['status']
+        data = request.POST['data']
+        today = datetime.datetime.now()  # 現在の日時を取得
+        date_time = today.strftime("%Y/%m/%d %H:%M:%S")
+        pc_name = request.POST['pc_name']
+        dictData = {}
+        dictData['user_id'] = user_id
+        dictData['line'] = line
+        dictData['kote'] = kote
+        dictData['status'] = status
+        dictData['data'] = data
+        dictData['date_time'] = date_time
+        dictData['pc_name'] = pc_name
+
+        conn = sqlite3.connect(DB)
+        cur = conn.cursor()
+
+        sql = "insert into trace_data('user_id', 'line', 'kote', 'status', 'data', 'date_time', 'pc_name')  values (?,?,?,?,?,?,?)"
+        # dt1=datetime.datetime.now()
+
+        lstData = [user_id, line, kote, status, data, date_time, pc_name]
+
+        print(lstData)
+
+        cur.execute(sql, lstData)
+        conn.commit()
+
+        cur.close()
+        conn.close()
+
+        json_str = json.dumps(dictData, ensure_ascii=False, indent=2,)
+        status = 200
+
+        return HttpResponse(json_str, content_type='application/json; charset=UTF-8', status=status)
